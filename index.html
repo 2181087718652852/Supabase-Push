@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Lighty Status — Lighty</title>
+  <meta name="description" content="Status for Lighty services"/>
+  <link rel="icon" href="https://iopgokphqerqsnqfkogz.supabase.co/storage/v1/object/public/lighty/images/logo-no-background.png"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f7f5f0;
+      color: #1a1814;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+    header { text-align: center; margin-bottom: 2rem; }
+    header h1 { font-size: 1.8rem; }
+    header p  { color: #94a3b8; margin-top: .4rem; }
+    .banner {
+      display: inline-block;
+      margin: 1rem auto;
+      padding: .5rem 1.5rem;
+      border-radius: 999px;
+      font-weight: 600;
+      background: #22c55e22;
+      color: #22c55e;
+      border: 1px solid #22c55e;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      max-width: 900px;
+      margin: 0 auto 2rem;
+      overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      padding: .85rem 1.2rem;
+      text-align: left;
+      font-size: .9rem;
+    }
+    th { color: #94a3b8; font-weight: 500; border-bottom: 1px solid #e2e8f0; }
+    tr + tr td { border-top: 1px solid #f1f5f9; }
+    .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    footer {
+      text-align: center;
+      color: #94a3b8;
+      font-size: .8rem;
+      margin-top: 2rem;
+    }
+    footer a { color: #e8a020; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lighty Status</h1>
+    <p>Lighty — Status for Lighty services</p>
+    <div class="banner">All Systems Operational</div>
+    <p style="color:#94a3b8;font-size:.85rem;margin-top:.5rem">Last updated: 2026-04-19 01:25 UTC</p>
+  </header>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Status</th>
+          <th>Latency</th>
+          <th>Checked At</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>API</td>
+          <td><span class="dot" style="background:#22c55e"></span> Operational</td>
+          <td>59 ms</td>
+          <td>2026-04-19T01:25:49Z</td>
+        </tr>
+        <tr>
+          <td>Accounts</td>
+          <td><span class="dot" style="background:#22c55e"></span> Operational</td>
+          <td>108 ms</td>
+          <td>2026-04-19T01:25:49Z</td>
+        </tr>
+        <tr>
+          <td>Payments</td>
+          <td><span class="dot" style="background:#22c55e"></span> Operational</td>
+          <td>70 ms</td>
+          <td>2026-04-19T01:25:48Z</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <p>Auto-refreshes every 5 minutes &nbsp;·&nbsp; Powered by <a href="https://github.com/features/actions">GitHub Actions</a></p>
+  </footer>
+</body>
+</html>
