@@ -1,0 +1,383 @@
+name: Status Page
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/status-page.yml"
+      - "status/**"
+
+jobs:
+  check:
+    name: Run Health Checks
+    runs-on: ubuntu-latest
+
+    # ─────────────────────────────────────────────────────────
+    # SERVICES TO MONITOR
+    # Add or remove entries to match your infrastructure.
+    # Each entry becomes one row on the status page.
+    #
+    # Fields:
+    #   name    — Display name shown on the page
+    #   url     — Endpoint to probe (GET request)
+    #   expect  — Expected HTTP status code (usually 200)
+    # ─────────────────────────────────────────────────────────
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: "API"
+            url: "https://lightyapp.xyz"
+            expect: 200
+
+          - name: "Accounts"
+            url: "https://connect.lightyapp.xyz"
+            expect: 200
+
+          - name: "Payments"
+            url: "https://connect.lightyapp.xyz"
+            expect: 200
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Probe ${{ matrix.service.name }}
+        id: probe
+        run: |
+          START=$(date +%s%3N)
+
+          HTTP_CODE=$(curl \
+            --silent \
+            --output /dev/null \
+            --write-out "%{http_code}" \
+            --max-time 10 \
+            --retry 2 \
+            --retry-delay 2 \
+            "${{ matrix.service.url }}" || echo "000")
+
+          END=$(date +%s%3N)
+          LATENCY=$((END - START))
+
+          if [ "$HTTP_CODE" = "${{ matrix.service.expect }}" ]; then
+            STATUS="up"
+          else
+            STATUS="down"
+          fi
+
+          echo "status=$STATUS"         >> "$GITHUB_OUTPUT"
+          echo "http_code=$HTTP_CODE"   >> "$GITHUB_OUTPUT"
+          echo "latency_ms=$LATENCY"    >> "$GITHUB_OUTPUT"
+
+      - name: Save result
+        run: |
+          mkdir -p results
+          SAFE_NAME=$(echo "${{ matrix.service.name }}" | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
+          cat > "results/${SAFE_NAME}.json" <<EOF
+          {
+            "name": "${{ matrix.service.name }}",
+            "url": "${{ matrix.service.url }}",
+            "status": "${{ steps.probe.outputs.status }}",
+            "http_code": "${{ steps.probe.outputs.http_code }}",
+            "latency_ms": ${{ steps.probe.outputs.latency_ms }},
+            "checked_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Upload check result
+        uses: actions/upload-artifact@v4
+        with:
+          name: result-${{ matrix.service.name }}
+          path: results/
+          retention-days: 1
+
+  build:
+    name: Build & Publish Status Page
+    runs-on: ubuntu-latest
+    needs: check
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all check results
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results/
+          merge-multiple: true
+
+      - name: Load history
+        run: |
+          if [ -f status/history.json ]; then
+            cp status/history.json history.json
+          else
+            echo "[]" > history.json
+          fi
+
+      - name: Render status page
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, glob
+          from datetime import datetime, timezone
+
+          # ── PAGE SETTINGS ────────────────────────────────────
+          # Edit these to brand your status page
+          SITE_TITLE       = "Lighty Status"       
+          SITE_DESCRIPTION = "Status for Lighty services"
+          COMPANY_NAME     = "Lighty"    
+          FAVICON_EMOJI    = "⚙️"             
+
+          # ── COLORS ───────────────────────────────────────────
+          COLOR_UP         = "#22c55e"   
+          COLOR_DOWN       = "#ef4444"   
+          COLOR_DEGRADED   = "#f59e0b"   
+          COLOR_BG         = "#f7f5f0"   
+          COLOR_CARD       = "#ffffff"   
+          COLOR_TEXT       = "#1a1814"  
+          COLOR_MUTED      = "#94a3b8"   
+          COLOR_ACCENT     = "#e8a020"   
+          # ─────────────────────────────────────────────────────
+
+          results = []
+          for path in glob.glob("all-results/**/*.json", recursive=True):
+              with open(path) as f:
+                  results.append(json.load(f))
+
+          results.sort(key=lambda r: r["name"])
+
+          all_up   = all(r["status"] == "up" for r in results)
+          any_down = any(r["status"] == "down" for r in results)
+
+          if all_up:
+              banner_text  = "All Systems Operational"
+              banner_color = COLOR_UP
+          elif any_down:
+              banner_text  = "Service Disruption Detected"
+              banner_color = COLOR_DOWN
+          else:
+              banner_text  = "Partial Degradation"
+              banner_color = COLOR_DEGRADED
+
+          now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+          rows = ""
+          for r in results:
+              dot_color = COLOR_UP if r["status"] == "up" else COLOR_DOWN
+              label     = "Operational" if r["status"] == "up" else f"Down (HTTP {r['http_code']})"
+              latency   = f"{r['latency_ms']} ms"
+              rows += f"""
+                  <tr>
+                    <td>{r['name']}</td>
+                    <td><span class="dot" style="background:{dot_color}"></span> {label}</td>
+                    <td>{latency}</td>
+                    <td>{r['checked_at']}</td>
+                  </tr>"""
+
+          html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8"/>
+            <meta name="viewport" content="width=device-width,initial-scale=1"/>
+            <title>{SITE_TITLE} — {COMPANY_NAME}</title>
+            <meta name="description" content="{SITE_DESCRIPTION}"/>
+            <link rel="icon" href="https://iopgokphqerqsnqfkogz.supabase.co/storage/v1/object/public/lighty/images/logo-no-background.png"/>
+            <style>
+              *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+              body {{
+                font-family: system-ui, sans-serif;
+                background: {COLOR_BG};
+                color: {COLOR_TEXT};
+                min-height: 100vh;
+                padding: 2rem 1rem;
+              }}
+              header {{ text-align: center; margin-bottom: 2rem; }}
+              header h1 {{ font-size: 1.8rem; }}
+              header p  {{ color: {COLOR_MUTED}; margin-top: .4rem; }}
+              .banner {{
+                display: inline-block;
+                margin: 1rem auto;
+                padding: .5rem 1.5rem;
+                border-radius: 999px;
+                font-weight: 600;
+                background: {banner_color}22;
+                color: {banner_color};
+                border: 1px solid {banner_color};
+              }}
+              .card {{
+                background: {COLOR_CARD};
+                border-radius: 12px;
+                max-width: 900px;
+                margin: 0 auto 2rem;
+                overflow: hidden;
+              }}
+              table {{ width: 100%; border-collapse: collapse; }}
+              th, td {{
+                padding: .85rem 1.2rem;
+                text-align: left;
+                font-size: .9rem;
+              }}
+              th {{ color: {COLOR_MUTED}; font-weight: 500; border-bottom: 1px solid #334155; }}
+              tr + tr td {{ border-top: 1px solid #1e293b; }}
+              .dot {{
+                display: inline-block;
+                width: 8px; height: 8px;
+                border-radius: 50%;
+                margin-right: 6px;
+                vertical-align: middle;
+              }}
+              footer {{
+                text-align: center;
+                color: {COLOR_MUTED};
+                font-size: .8rem;
+                margin-top: 2rem;
+              }}
+              footer a {{ color: {COLOR_ACCENT}; text-decoration: none; }}
+            </style>
+          </head>
+          <body>
+            <header>
+              <h1>{SITE_TITLE}</h1>
+              <p>{COMPANY_NAME} — {SITE_DESCRIPTION}</p>
+              <div class="banner">{banner_text}</div>
+              <p style="color:{COLOR_MUTED};font-size:.85rem;margin-top:.5rem">Last updated: {now}</p>
+            </header>
+
+            <div class="card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Service</th>
+                    <th>Status</th>
+                    <th>Latency</th>
+                    <th>Checked At</th>
+                  </tr>
+                </thead>
+                <tbody>{rows}
+                </tbody>
+              </table>
+            </div>
+
+            <footer>
+              <p>Auto-refreshes every 5 minutes &nbsp;·&nbsp; Powered by <a href="https://github.com/features/actions">GitHub Actions</a></p>
+            </footer>
+          </body>
+          </html>"""
+
+          os.makedirs("public", exist_ok=True)
+          with open("public/index.html", "w") as f:
+              f.write(html)
+
+          print(f"✅ Rendered status page — {len(results)} service(s) — {banner_text}")
+          PYEOF
+
+      - name: Update uptime history
+        run: |
+          HISTORY_DAYS=90 
+
+          python3 - <<'PYEOF'
+          import json, glob
+          from datetime import datetime, timezone, timedelta
+
+          HISTORY_DAYS = int(os.environ.get("HISTORY_DAYS", 90))
+          import os
+
+          results = []
+          for path in glob.glob("all-results/**/*.json", recursive=True):
+              with open(path) as f:
+                  results.append(json.load(f))
+
+          with open("history.json") as f:
+              history = json.load(f)
+
+          history.append({
+              "timestamp": datetime.now(timezone.utc).isoformat(),
+              "services": results
+          })
+
+          cutoff = datetime.now(timezone.utc) - timedelta(days=HISTORY_DAYS)
+          history = [
+              e for e in history
+              if datetime.fromisoformat(e["timestamp"]) > cutoff
+          ]
+
+          os.makedirs("status", exist_ok=True)
+          with open("status/history.json", "w") as f:
+              json.dump(history, f, indent=2)
+
+          print(f"History updated — {len(history)} entries retained")
+          PYEOF
+
+      - name: Commit history
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add status/history.json
+          git diff --cached --quiet || git commit -m "chore: update status history [skip ci]"
+          git push
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          publish_branch: gh-pages    # ← change if you use a different branch
+          commit_message: "deploy: status page update"
+          force_orphan: false          # set true to squash gh-pages history
+
+  alert:
+    name: Send Incident Alerts
+    runs-on: ubuntu-latest
+    needs: check
+    if: always()
+
+    steps:
+      - name: Download all check results
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results/
+          merge-multiple: true
+          
+      - name: Email alert (on failure)
+        if: env.MAIL_SERVER != ''
+        env:
+          MAIL_SERVER: "smtp.resend.com"
+          MAIL_PORT:   "465"
+          MAIL_USER:   "resend"
+          MAIL_PASS:   ${{ secrets.RESEND_API_KEY }}
+          MAIL_TO:     "lightyapp@pm.me"
+        run: |
+          python3 - <<'PYEOF'
+          import json, glob, os, smtplib
+          from email.mime.text import MIMEText
+
+          results = []
+          for path in glob.glob("all-results/**/*.json", recursive=True):
+              with open(path) as f:
+                  results.append(json.load(f))
+
+          down = [r for r in results if r["status"] == "down"]
+          if not down:
+              exit(0)
+
+          body = "The following services are down:\n\n" + \
+                 "\n".join(f"  • {r['name']} ({r['url']}) — HTTP {r['http_code']}" for r in down)
+
+          msg = MIMEText(body)
+          msg["Subject"] = "⚠️ Status Alert: Service Outage"
+          msg["From"]    = "status@emails.lightyapp.xyz"
+          msg["To"]      = os.environ["MAIL_TO"]
+
+          with smtplib.SMTP_SSL(os.environ["MAIL_SERVER"], int(os.environ["MAIL_PORT"])) as s:
+              s.login(os.environ["MAIL_USER"], os.environ["MAIL_PASS"])
+              s.send_message(msg)
+
+          print("Email alert sent")
+          PYEOF
