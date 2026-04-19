@@ -16,16 +16,6 @@ jobs:
     name: Run Health Checks
     runs-on: ubuntu-latest
 
-    # ─────────────────────────────────────────────────────────
-    # SERVICES TO MONITOR
-    # Add or remove entries to match your infrastructure.
-    # Each entry becomes one row on the status page.
-    #
-    # Fields:
-    #   name    — Display name shown on the page
-    #   url     — Endpoint to probe (GET request)
-    #   expect  — Expected HTTP status code (usually 200)
-    # ─────────────────────────────────────────────────────────
     strategy:
       fail-fast: false
       matrix:
@@ -128,23 +118,19 @@ jobs:
           import json, os, glob
           from datetime import datetime, timezone
 
-          # ── PAGE SETTINGS ────────────────────────────────────
-          # Edit these to brand your status page
-          SITE_TITLE       = "Lighty Status"       
+          SITE_TITLE       = "Lighty Status"
           SITE_DESCRIPTION = "Status for Lighty services"
-          COMPANY_NAME     = "Lighty"    
-          FAVICON_EMOJI    = "⚙️"             
+          COMPANY_NAME     = "Lighty"
+          FAVICON_EMOJI    = "⚙️"
 
-          # ── COLORS ───────────────────────────────────────────
-          COLOR_UP         = "#22c55e"   
-          COLOR_DOWN       = "#ef4444"   
-          COLOR_DEGRADED   = "#f59e0b"   
-          COLOR_BG         = "#f7f5f0"   
-          COLOR_CARD       = "#ffffff"   
-          COLOR_TEXT       = "#1a1814"  
-          COLOR_MUTED      = "#94a3b8"   
-          COLOR_ACCENT     = "#e8a020"   
-          # ─────────────────────────────────────────────────────
+          COLOR_UP         = "#22c55e"
+          COLOR_DOWN       = "#ef4444"
+          COLOR_DEGRADED   = "#f59e0b"
+          COLOR_BG         = "#f7f5f0"
+          COLOR_CARD       = "#ffffff"
+          COLOR_TEXT       = "#1a1814"
+          COLOR_MUTED      = "#94a3b8"
+          COLOR_ACCENT     = "#e8a020"
 
           results = []
           for path in glob.glob("all-results/**/*.json", recursive=True):
@@ -224,8 +210,8 @@ jobs:
                 text-align: left;
                 font-size: .9rem;
               }}
-              th {{ color: {COLOR_MUTED}; font-weight: 500; border-bottom: 1px solid #334155; }}
-              tr + tr td {{ border-top: 1px solid #1e293b; }}
+              th {{ color: {COLOR_MUTED}; font-weight: 500; border-bottom: 1px solid #e2e8f0; }}
+              tr + tr td {{ border-top: 1px solid #f1f5f9; }}
               .dot {{
                 display: inline-block;
                 width: 8px; height: 8px;
@@ -278,16 +264,14 @@ jobs:
           print(f"✅ Rendered status page — {len(results)} service(s) — {banner_text}")
           PYEOF
 
+      # Fix: import os before it's used, and don't rely on shell env var inside Python
       - name: Update uptime history
         run: |
-          HISTORY_DAYS=90 
-
           python3 - <<'PYEOF'
-          import json, glob
+          import os, json, glob
           from datetime import datetime, timezone, timedelta
 
-          HISTORY_DAYS = int(os.environ.get("HISTORY_DAYS", 90))
-          import os
+          HISTORY_DAYS = 90
 
           results = []
           for path in glob.glob("all-results/**/*.json", recursive=True):
@@ -323,61 +307,13 @@ jobs:
           git diff --cached --quiet || git commit -m "chore: update status history [skip ci]"
           git push
 
+      # peaceiris/actions-gh-pages creates the gh-pages branch
+      # automatically on first run — no manual setup needed.
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          publish_branch: gh-pages    # ← change if you use a different branch
+          publish_branch: gh-pages
           commit_message: "deploy: status page update"
-          force_orphan: false          # set true to squash gh-pages history
-
-  alert:
-    name: Send Incident Alerts
-    runs-on: ubuntu-latest
-    needs: check
-    if: always()
-
-    steps:
-      - name: Download all check results
-        uses: actions/download-artifact@v4
-        with:
-          path: all-results/
-          merge-multiple: true
-          
-      - name: Email alert (on failure)
-        if: env.MAIL_SERVER != ''
-        env:
-          MAIL_SERVER: "smtp.resend.com"
-          MAIL_PORT:   "465"
-          MAIL_USER:   "resend"
-          MAIL_PASS:   ${{ secrets.RESEND_API_KEY }}
-          MAIL_TO:     "lightyapp@pm.me"
-        run: |
-          python3 - <<'PYEOF'
-          import json, glob, os, smtplib
-          from email.mime.text import MIMEText
-
-          results = []
-          for path in glob.glob("all-results/**/*.json", recursive=True):
-              with open(path) as f:
-                  results.append(json.load(f))
-
-          down = [r for r in results if r["status"] == "down"]
-          if not down:
-              exit(0)
-
-          body = "The following services are down:\n\n" + \
-                 "\n".join(f"  • {r['name']} ({r['url']}) — HTTP {r['http_code']}" for r in down)
-
-          msg = MIMEText(body)
-          msg["Subject"] = "⚠️ Status Alert: Service Outage"
-          msg["From"]    = "status@emails.lightyapp.xyz"
-          msg["To"]      = os.environ["MAIL_TO"]
-
-          with smtplib.SMTP_SSL(os.environ["MAIL_SERVER"], int(os.environ["MAIL_PORT"])) as s:
-              s.login(os.environ["MAIL_USER"], os.environ["MAIL_PASS"])
-              s.send_message(msg)
-
-          print("Email alert sent")
-          PYEOF
+          force_orphan: false
