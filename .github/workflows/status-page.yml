@@ -276,9 +276,6 @@ jobs:
             </div>
             <div class="content">""" + outage_section + operational_section + """
             </div>
-            <footer>
-              Powered by <a href="https://github.com/features/actions">GitHub Actions</a>
-            </footer>
           </body>
           </html>"""
 
