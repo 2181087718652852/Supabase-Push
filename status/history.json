@@ -1970,5 +1970,34 @@
         "checked_at": "2026-04-22T12:11:02Z"
       }
     ]
+  },
+  {
+    "timestamp": "2026-04-22T14:11:14.954772+00:00",
+    "services": [
+      {
+        "name": "API",
+        "url": "https://lightyapp.xyz",
+        "status": "down",
+        "http_code": "403",
+        "latency_ms": 144,
+        "checked_at": "2026-04-22T14:11:02Z"
+      },
+      {
+        "name": "Accounts",
+        "url": "https://connect.lightyapp.xyz",
+        "status": "down",
+        "http_code": "403",
+        "latency_ms": 86,
+        "checked_at": "2026-04-22T14:11:02Z"
+      },
+      {
+        "name": "Payments",
+        "url": "https://connect.lightyapp.xyz",
+        "status": "down",
+        "http_code": "403",
+        "latency_ms": 108,
+        "checked_at": "2026-04-22T14:11:01Z"
+      }
+    ]
   }
 ]
